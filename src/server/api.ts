@@ -9,7 +9,7 @@ import { hashPassword,hashToken,verifyPassword,encrypt } from './crypto';
 import { AppError,invariant } from '../domain/errors';
 import { channelSchema,providerSchema,scheduleSchema } from '../domain/schemas';
 import { nextRun,canApprove } from '../domain/workflow';
-import { createProject,projectFor,saveScript,queueProject,setSceneLock } from './projects';
+import { createProject,projectFor,saveScript,queueProject,setSceneLock,deleteCancelledProject } from './projects';
 import { validateProviderUrl } from '../providers/openai';
 import { readAsset,downloadUrl,storageHealth } from './storage';
 import { redis } from './queue';
@@ -73,7 +73,7 @@ export async function handle(request:NextRequest,{params}:{params:Promise<{path:
         db.videoProject.findMany({where:{workspaceId,deletedAt:null,intent:{not:'IDEAS'}},orderBy:{createdAt:'desc'},take:100,include:{channel:{select:{name:true}}}}),
         db.aIProvider.findMany({where:{workspaceId},select:{id:true,name:true,kind:true,baseUrl:true,llmModel:true,imageModel:true,ttsModel:true,enabled:true,scriptCostCents:true,imageCostCents:true,ttsCostCents:true,concurrency:true,priority:true,requestsPerMinute:true,timeoutMs:true,settings:true}}),
         db.scheduleRule.findMany({where:{workspaceId},orderBy:{nextRunAt:'asc'}}),
-        db.productionJob.findMany({where:{workspaceId},orderBy:{createdAt:'desc'},take:50}),
+        db.productionJob.findMany({where:{workspaceId,project:{deletedAt:null}},orderBy:{createdAt:'desc'},take:50}),
         db.notification.findMany({where:{workspaceId},orderBy:{createdAt:'desc'},take:30}),
         db.costUsage.findMany({where:{workspaceId},orderBy:{createdAt:'desc'},take:100}),
         db.generatedAsset.findMany({where:{workspaceId},orderBy:{createdAt:'desc'},take:100}),
@@ -163,6 +163,7 @@ export async function handle(request:NextRequest,{params}:{params:Promise<{path:
         await audit(actor,'video.'+action,id);return reply({ok:true});
       }
       authorize(actor);
+      if(method==='DELETE'&&!action)return reply(await deleteCancelledProject(actor,id));
       if(method==='POST'&&(action==='render'||action==='retry')){const data=z.object({allowAdditionalCost:z.boolean().default(false)}).parse(await body(request));return reply(await queueProject(actor,id,action,data.allowAdditionalCost),202);}
       if(method==='POST'&&action==='cancel'){
         await db.$transaction(async tx=>{await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${id}))`;await tx.scriptEditJob.updateMany({where:{projectId:id,status:{in:['QUEUED','RUNNING','READY']}},data:{status:'DISMISSED',leaseUntil:null}});await tx.productionJob.updateMany({where:{projectId:id,status:{in:['QUEUED','RUNNING']}},data:{status:'CANCELLED',leaseUntil:null}});await tx.publishingJob.updateMany({where:{projectId:id,status:{in:['AWAITING_APPROVAL','READY_TO_PUBLISH']}},data:{status:'CANCELLED'}});await tx.videoProject.update({where:{id},data:{status:'CANCELLED'}});});await audit(actor,'video.cancel',id);return reply({ok:true});

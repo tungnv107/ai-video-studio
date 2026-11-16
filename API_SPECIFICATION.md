@@ -18,6 +18,7 @@ Base `/api`. JSON, session cookie HttpOnly. Mọi POST/PUT/PATCH/DELETE yêu c�
 | videos | GET | page (24/page), status filter |
 | videos | POST | OWNER/EDITOR; Idempotency-Key bắt buộc; trả 202 |
 | videos/:id | GET | Script, versions, scenes, costs, jobs, QA |
+| videos/:id | DELETE | OWNER/EDITOR; chỉ trạng thái CANCELLED, xóa mềm khỏi danh sách và hàng đợi sản xuất; giữ lịch sử chi phí/tài sản; trạng thái khác trả 409 |
 | videos/:id/render, retry | POST | Retry checkpoint; allowAdditionalCost=false mặc định |
 | videos/:id/cancel | POST | Hủy công việc nội bộ; không giả định hủy remote upload |
 | videos/:id/approve | POST | OWNER/REVIEWER; {reviewed:true,rightsConfirmed:true}; QA ≥85 |

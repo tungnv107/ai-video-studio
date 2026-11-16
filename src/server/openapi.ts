@@ -8,7 +8,7 @@ export const openapi={openapi:'3.1.0',info:{title:'AI Video Automation Studio',v
   '/auth/register':{post:operation('Tạo tài khoản và workspace')},'/auth/login':{post:operation('Đăng nhập')},'/auth/logout':{post:operation('Đăng xuất')},
   '/bootstrap':{get:operation('Dashboard và dữ liệu workspace')},'/channels':{get:operation('Danh sách kênh'),post:operation('Tạo kênh')},
   '/providers':{post:operation('Thêm provider, mã hóa API key')},'/videos':{get:operation('Video phân trang, filter status'),post:{...operation('Tạo job sản xuất nền'),parameters:[{name:'Idempotency-Key',in:'header',required:true,schema:{type:'string'}}]}},
-  '/videos/{id}':{get:operation('Chi tiết video, script, jobs và QA')},'/videos/{id}/render':{post:operation('Dựng từ script hiện tại')},
+  '/videos/{id}':{get:operation('Chi tiết video, script, jobs và QA'),delete:operation('OWNER/EDITOR xóa mềm kịch bản đã hủy; trạng thái khác trả 409')},'/videos/{id}/render':{post:operation('Dựng từ script hiện tại')},
   '/videos/{id}/retry':{post:operation('Thử lại từ checkpoint')},'/videos/{id}/approve':{post:operation('Duyệt revision hiện tại')},
   '/videos/{id}/cancel':{post:operation('Hủy job nội bộ')},'/videos/{id}/download':{get:operation('MP4 riêng tư, hỗ trợ Range')},
   '/scripts/{id}':{get:operation('Kịch bản và phiên bản'),put:operation('Lưu phiên bản với optimistic concurrency')},

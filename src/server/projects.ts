@@ -7,7 +7,7 @@ import { videoInputSchema,scriptSchema,sameScene } from '../domain/schemas';
 import { AppError,invariant } from '../domain/errors';
 import { editableStatuses,topicHash } from '../domain/workflow';
 import {isPendingCostStep,needsCostConfirmation} from '../domain/retry-costs';
-import type { Actor } from './auth';
+import { authorize,type Actor } from './auth';
 export async function createProject(actor:Actor,input:unknown,idempotencyKey:string){
   const data=videoInputSchema.parse(input);
   const key=actor.workspaceId+':'+idempotencyKey;
@@ -36,13 +36,31 @@ export async function projectFor(workspaceId:string,id:string){
   const project=await db.videoProject.findFirst({where:{id,workspaceId,deletedAt:null},include:{channel:true,script:{include:{versions:{orderBy:{version:'desc'}}}},scenes:{orderBy:{sceneOrder:'asc'}},assets:true,jobs:{orderBy:{createdAt:'desc'}},costs:true,sources:true,approvals:true,publishingJobs:{select:{id:true,status:true,account:{select:{displayName:true,platform:true}},post:{select:{publishedAt:true,url:true}}}}}});
   invariant(project,'NOT_FOUND','Không tìm thấy video.',404);return project;
 }
+export async function deleteCancelledProject(actor:Actor,id:string){
+  authorize(actor);
+  return db.$transaction(async tx=>{
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${id}))`;
+    const project=await tx.videoProject.findFirst({where:{id,workspaceId:actor.workspaceId,deletedAt:null},select:{status:true}});
+    invariant(project,'NOT_FOUND','Không tìm thấy kịch bản.',404);
+    invariant(project.status==='CANCELLED','STATE','Chỉ có thể xóa kịch bản đã hủy.',409);
+    const changed=await tx.videoProject.updateMany({where:{id,workspaceId:actor.workspaceId,deletedAt:null,status:'CANCELLED'},data:{deletedAt:new Date()}});
+    invariant(changed.count,'STATE','Trạng thái kịch bản đã thay đổi. Tải lại trước khi xóa.',409);
+    await tx.productionJob.updateMany({where:{projectId:id,status:{in:['QUEUED','RUNNING']}},data:{status:'CANCELLED',leaseUntil:null}});
+    await tx.scriptEditJob.updateMany({where:{projectId:id,status:{in:['QUEUED','RUNNING','READY']}},data:{status:'DISMISSED',leaseUntil:null}});
+    await tx.publishingJob.updateMany({where:{projectId:id,status:{in:['AWAITING_APPROVAL','READY_TO_PUBLISH']}},data:{status:'CANCELLED',consentAt:null}});
+    await tx.approvalRequest.updateMany({where:{projectId:id,status:'PENDING'},data:{status:'SUPERSEDED'}});
+    // Soft deletion keeps scripts, assets and cost records for history.
+    await tx.auditLog.create({data:{workspaceId:actor.workspaceId,actorId:actor.userId,action:'video.delete',entityId:id}});
+    return {ok:true};
+  });
+}
 export async function saveScript(actor:Actor,id:string,input:unknown,expectedRevision:number){
   return db.$transaction(tx=>saveScriptInTransaction(tx,actor,id,input,expectedRevision));
 }
 export async function saveScriptInTransaction(tx:Prisma.TransactionClient,actor:Actor,id:string,input:unknown,expectedRevision:number,reason='User edit/restore'){
   const data=scriptSchema.parse(input);
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${id}))`;
-    const project=await tx.videoProject.findFirst({where:{id,workspaceId:actor.workspaceId},include:{script:true,scenes:true}});
+    const project=await tx.videoProject.findFirst({where:{id,workspaceId:actor.workspaceId,deletedAt:null},include:{script:true,scenes:true}});
     invariant(project,'NOT_FOUND','Không tìm thấy video.',404);
     invariant(editableStatuses.includes(project.status),'BUSY','Chưa thể sửa khi công việc đang chạy.',409);
     invariant(project.revision===expectedRevision,'VERSION_CONFLICT','Kịch bản đã thay đổi. Tải lại trước khi lưu.',409);
@@ -67,7 +85,7 @@ export async function saveScriptInTransaction(tx:Prisma.TransactionClient,actor:
 export async function queueProject(actor:Actor,id:string,action:'render'|'retry',allowAdditionalCost=false){
   return db.$transaction(async tx=>{
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${id}))`;
-    const project=await tx.videoProject.findFirst({where:{id,workspaceId:actor.workspaceId},include:{script:true,assets:{select:{revision:true,sceneOrder:true,kind:true}}}});
+    const project=await tx.videoProject.findFirst({where:{id,workspaceId:actor.workspaceId,deletedAt:null},include:{script:true,assets:{select:{revision:true,sceneOrder:true,kind:true}}}});
     invariant(project,'NOT_FOUND','Không tìm thấy video.',404);
     invariant(editableStatuses.includes(project.status),'STATE','Trạng thái hiện tại không cho phép chạy lại.',409);
     invariant(!await tx.productionJob.findFirst({where:{projectId:id,status:{in:['QUEUED','RUNNING']}}}),'BUSY','Video đã có công việc đang chạy.',409);

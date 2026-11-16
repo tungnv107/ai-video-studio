@@ -54,6 +54,7 @@ export const guideSections: GuideSection[] = [
       { title: 'Thiết kế chuyển động và đồ họa', text: 'Mỗi scene có lựa chọn chuyển động như pan hoặc parallax, chuyển cảnh cắt/hòa trộn và đồ họa thanh, các bước hoặc thẻ số liệu. Nhập tiêu đề, nhãn và giá trị, xem preview rồi lưu. Parallax là hiệu ứng hai lớp từ cùng ảnh, không tự tách chủ thể.' },
       { title: 'Khóa và khôi phục scene', text: 'Dùng nút khóa để bảo vệ scene khỏi thay đổi. Mở khóa trước khi sửa scene đó. Danh sách Khôi phục phiên bản giúp lấy lại nội dung cũ thành revision mới; hãy lưu bản đang sửa trước khi tải lại hoặc khôi phục.' },
       { title: 'Dùng Trợ lý biên tập AI', text: 'Lưu sửa tay trước, sau đó chọn viết lại một scene, tạo ba hook hoặc đổi thời lượng. Xem đề xuất rồi bấm Áp dụng. Scene khóa được giữ nguyên. Nếu kịch bản đã đổi trong lúc AI chạy, đề xuất cũ không còn áp dụng được. Ba hook giữ ngân sách bằng ba lần mức viết kịch bản.' },
+      { title: 'Xóa kịch bản đã hủy', text: 'Chủ sở hữu hoặc biên tập viên mở kịch bản có trạng thái Đã hủy, bấm Xóa kịch bản rồi xác nhận. Kịch bản được bỏ khỏi cả ba danh sách Kịch bản AI, Storyboard và Xưởng video; lịch sử chi phí và tài sản vẫn được giữ.' },
     ],
     notes: ['Sửa hoặc áp dụng đề xuất tạo revision mới, vô hiệu đầu ra và phê duyệt cũ. Cần dựng, xem và duyệt lại đúng phiên bản.'],
     links: [{ label: 'Kịch bản AI', href: '/?view=scripts' }, { label: 'Storyboard', href: '/?view=storyboard' }],
