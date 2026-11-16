@@ -1,6 +1,6 @@
 # Kiểm thử và bằng chứng
 
-Cập nhật 16/11/2026. Chỉ dùng database local kiểm thử. Không chạy production worker đồng thời integration tests vì worker có thể lấy fixture jobs. Chưa có paid AI key hoặc tài khoản social live.
+Cập nhật 16/11/2026. Kết quả rà soát mới nhất: [AUDIT_END_TO_END.md](AUDIT_END_TO_END.md). 82 unit, 78 integration, 15 Chrome E2E đã qua; video thật 30 giây bằng Codex + Edge TTS Việt đã được phát/tải qua domain production. Social live chưa được nghiệm thu. Các fixture tests chỉ chạy trên database local; tạm dừng worker local để worker không lấy fixture jobs.
 
 | Nhóm | Lệnh | Phạm vi |
 |---|---|---|
