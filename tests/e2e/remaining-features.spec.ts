@@ -1,0 +1,27 @@
+import {test,expect} from '@playwright/test';
+import {randomUUID} from 'node:crypto';
+import {PrismaClient} from '@prisma/client';
+import {loadEnvFile} from 'node:process';
+import {fixtureScript} from '../fixtures';
+loadEnvFile('.env');const db=new PrismaClient();let userId='',workspaceId='';
+test.afterAll(async()=>{if(workspaceId)await db.workspace.delete({where:{id:workspaceId}});if(userId)await db.user.delete({where:{id:userId}});await db.$disconnect();});
+test('publishing anchor, rich ideas and scene graphics persist through the UI',async({page})=>{
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error'&&/hydration|hydrated|didn't match/i.test(m.text()))errors.push(m.text());});
+ const headers={Origin:'http://localhost:3000'},email=randomUUID()+'@test.invalid';
+ expect((await page.request.post('/api/auth/register',{headers,data:{email,password:'Test-password-12345',name:'TEST remaining features'}})).ok()).toBeTruthy();
+ const actor=await (await page.request.get('/api/auth/me')).json();userId=actor.userId;workspaceId=actor.workspaceId;
+ const channel=await (await page.request.post('/api/channels',{headers,data:{name:'TEST production plan',topic:'Test'}})).json();
+ await page.goto('/?view=calendar');await page.getByRole('button',{name:'Tạo lịch',exact:true}).click();await page.getByLabel('Kênh nội dung',{exact:true}).selectOption(channel.id);await page.getByLabel('Chủ đề cho lịch sản xuất').fill('Test planned topic');await page.getByLabel('Tên lịch',{exact:true}).fill('TEST publication anchor');
+ const target=new Date(Date.now()+86400000),local=new Date(+target-target.getTimezoneOffset()*60000).toISOString().slice(0,16);
+ await page.getByLabel('Hoặc chạy một lần (giờ trên máy của bạn)').fill(local);await page.getByRole('button',{name:'Lưu cấu hình',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
+ const rule=await db.scheduleRule.findFirstOrThrow({where:{workspaceId}});expect(rule.anchor).toBe('PUBLISH');expect(+new Date(local)-+rule.nextRunAt!).toBe(270*60000);
+ await page.getByRole('button',{name:'Danh sách',exact:true}).click();await expect(page.getByRole('cell',{name:'TEST publication anchor',exact:true})).toBeVisible();await expect(page.getByText('Deadline',{exact:true}).first()).toBeVisible();await page.screenshot({path:'artifacts/ui-calendar-milestones.png',fullPage:true});
+ await db.contentIdea.create({data:{workspaceId,channelId:channel.id,title:'TEST rich idea',problem:'Vấn đề kiểm thử',audience:'Khán giả kiểm thử',angle:'Góc khai thác thử nghiệm',hook:'Hook thử nghiệm',channelFit:90,feasibility:85,feasibilityReason:'Có dữ liệu fixture',estimatedCostCents:125,estimateBasis:'Dự toán fixture theo cấu hình',sourceUrls:['https://example.com/reference']}});
+ await page.goto('/?view=topics');await expect(page.getByRole('heading',{name:'TEST rich idea'})).toBeVisible();await expect(page.getByText('Vấn đề kiểm thử',{exact:false})).toBeVisible();await expect(page.getByText('90/100',{exact:true})).toBeVisible();await page.screenshot({path:'artifacts/ui-ideas-assessment.png',fullPage:true});
+ const project=await (await page.request.post('/api/videos',{headers:{...headers,'Idempotency-Key':randomUUID()},data:{channelId:channel.id,topic:randomUUID(),targetDuration:10,intent:'SCRIPT'}})).json();
+ await db.productionJob.updateMany({where:{projectId:project.id},data:{status:'COMPLETED'}});await db.videoProject.update({where:{id:project.id},data:{status:'SCRIPT_READY'}});expect((await page.request.put('/api/scripts/'+project.id,{headers,data:{script:fixtureScript,expectedRevision:0}})).ok()).toBeTruthy();
+ await page.goto('/?view=scripts');await page.getByRole('button',{name:/Video kiểm thử kỹ thuật/}).click();await page.getByLabel('Chuyển động scene 1',{exact:true}).selectOption('pan-left');await page.getByLabel('Chuyển cảnh scene 1',{exact:true}).selectOption('fade');await page.getByLabel('Đồ họa scene 2',{exact:true}).selectOption('BARS');await page.getByLabel('Tiêu đề đồ họa scene 2',{exact:true}).fill('TEST biểu đồ');await page.getByLabel('Giá trị đồ họa 1 scene 2',{exact:true}).fill('35');await page.getByLabel('Giá trị đồ họa 2 scene 2',{exact:true}).fill('70');await expect(page.getByAltText('Xem trước đồ họa scene 2')).toBeVisible();await page.locator('.scene-design').last().screenshot({path:'artifacts/ui-scene-graphics.png'});
+ await page.getByRole('button',{name:'Lưu phiên bản',exact:true}).click();await expect(page.getByText('Phiên bản 2 · 9:16 · 10s',{exact:true})).toBeVisible();const saved=await (await page.request.get('/api/videos/'+project.id)).json();expect(saved.script.data.scenes[0]).toMatchObject({camera_motion:'pan-left',transition:'fade'});expect(saved.script.data.scenes[1].graphic).toMatchObject({kind:'BARS',title:'TEST biểu đồ',items:[{value:35},{value:70}]});
+ await page.getByRole('button',{name:'Khóa scene',exact:true}).first().click();await expect(page.getByLabel('Chuyển động scene 1',{exact:true})).toBeDisabled();
+ await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect(errors).toEqual([]);
+});

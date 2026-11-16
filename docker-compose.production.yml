@@ -1,0 +1,17 @@
+# docker compose -f docker-compose.yml -f docker-compose.production.yml ...
+# The proxy network must already exist and include Nginx Proxy Manager.
+services:
+  postgres:
+    ports: !reset []
+  redis:
+    ports: !reset []
+  web:
+    networks:
+      default:
+      proxy:
+        aliases:
+          - ai-video-studio-web
+networks:
+  proxy:
+    external: true
+    name: ${NPM_NETWORK:-npm_proxy}

@@ -1,0 +1,8 @@
+import {db} from '../server/db';
+import {deleteAsset} from '../server/storage';
+let lastRun=0;
+export async function tickRetention(force=false){if(!force&&Date.now()-lastRun<3600000)return;lastRun=Date.now();
+ const workspaces=await db.workspace.findMany({where:{retentionDays:{gte:7}}});
+ for(const workspace of workspaces){const cutoff=new Date(Date.now()-workspace.retentionDays*86400000),items=await db.mediaItem.findMany({where:{workspaceId:workspace.id,deletedAt:{lte:cutoff}},take:100});if(!items.length)continue;const [channels,projects,templates,brands,experiments]=await Promise.all([db.contentChannel.findMany({where:{workspaceId:workspace.id},select:{settings:true}}),db.videoProject.findMany({where:{workspaceId:workspace.id},select:{productionConfig:true}}),db.videoTemplate.findMany({where:{workspaceId:workspace.id},select:{config:true}}),db.brandKit.findMany({where:{workspaceId:workspace.id},select:{config:true}}),db.experiment.findMany({where:{workspaceId:workspace.id},select:{variants:true}})]),references=JSON.stringify([channels,projects,templates,brands,experiments]);for(const item of items)if(!references.includes(item.id)){await deleteAsset(workspace.id,item.storageKey);await db.mediaItem.deleteMany({where:{id:item.id,deletedAt:{lte:cutoff}}});await db.auditLog.create({data:{workspaceId:workspace.id,action:'retention.media-purged',entityId:item.id}});}}
+ await db.authChallenge.deleteMany({where:{expiresAt:{lt:new Date(Date.now()-86400000)}}});await db.oAuthState.deleteMany({where:{expiresAt:{lt:new Date(Date.now()-86400000)}}});await db.session.deleteMany({where:{expiresAt:{lt:new Date()}}});
+}

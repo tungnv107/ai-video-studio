@@ -1,0 +1,28 @@
+import {test,expect} from '@playwright/test';
+import {randomUUID} from 'node:crypto';
+import {PrismaClient} from '@prisma/client';
+import {loadEnvFile} from 'node:process';
+loadEnvFile('.env');const db=new PrismaClient();let email='';const password='Test-password-'+randomUUID();
+test.afterAll(async()=>{const user=await db.user.findUnique({where:{email},include:{memberships:true}});if(user){for(const m of user.memberships)await db.workspace.delete({where:{id:m.workspaceId}});await db.user.delete({where:{id:user.id}});}await db.$disconnect();});
+test('register → channel → provider form → schedule → queued video; desktop and mobile',async({page})=>{
+  email='e2e-'+randomUUID()+'@test.invalid';const consoleErrors:string[]=[];page.on('pageerror',e=>consoleErrors.push(e.message));
+  await page.goto('/login');await page.screenshot({path:'artifacts/ui-login.png',fullPage:true});
+  await page.getByRole('button',{name:'Tạo tài khoản',exact:true}).click();await page.getByLabel('Họ và tên').fill('Studio Kiểm Thử');await page.getByLabel('Email',{exact:true}).fill(email);await page.getByLabel('Mật khẩu',{exact:true}).fill(password);await page.getByRole('button',{name:'Tạo studio',exact:true}).click();
+  await expect(page.getByRole('heading',{name:/Chào/})).toBeVisible();await page.screenshot({path:'artifacts/ui-dashboard-empty.png',fullPage:true});
+  await page.getByRole('button',{name:/01.*Tạo kênh nội dung/}).click();
+  await page.getByLabel('Tên kênh',{exact:true}).fill('Kênh kiểm thử');await page.getByLabel('Chủ đề chính').fill('Kiến thức công nghệ');await page.getByRole('button',{name:'Lưu cấu hình',exact:true}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);await page.getByRole('button',{name:'Kênh nội dung',exact:true}).click();await expect(page.getByRole('heading',{name:'Kênh kiểm thử'})).toBeVisible();
+  await page.getByRole('button',{name:'Nhà cung cấp AI',exact:true}).click();await page.getByRole('button',{name:'Thêm provider'}).click();await expect(page.getByLabel('API key',{exact:false})).toHaveAttribute('type','password');await page.getByRole('button',{name:'Đóng',exact:true}).click();
+  await page.getByRole('button',{name:'Lịch nội dung',exact:true}).click();await page.getByRole('button',{name:'Tạo lịch',exact:true}).click();
+  await page.getByLabel('Kênh nội dung',{exact:true}).selectOption({label:'Kênh kiểm thử'});await page.getByLabel('Chủ đề cho lịch sản xuất').fill('AI trong đời sống');await page.getByLabel('Tên lịch',{exact:true}).fill('Lịch kiểm thử');await page.getByRole('button',{name:'Lưu cấu hình',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button',{name:'Danh sách',exact:true}).click();await expect(page.getByRole('cell',{name:/Lịch kiểm thử/})).toBeVisible();
+  await page.getByRole('button',{name:'Xưởng video',exact:false}).click();await page.getByRole('button',{name:'Tạo video',exact:true}).first().click();await page.getByLabel('Kênh nội dung',{exact:true}).selectOption({label:'Kênh kiểm thử'});await page.getByLabel('Bạn muốn kể câu chuyện gì?').fill('Vì sao AI có thể sai?');await page.getByRole('button',{name:'Bắt đầu sáng tạo'}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('heading',{name:'Vì sao AI có thể sai?'})).toBeVisible();await page.screenshot({path:'artifacts/ui-production.png',fullPage:true});
+  const bootstrap=await page.request.get('/api/bootstrap');expect(bootstrap.ok()).toBeTruthy();const data=await bootstrap.json();const video=data.videos[0];
+  const noOrigin=await page.request.post('/api/channels',{data:{name:'Bad',topic:'Bad'}});expect(noOrigin.status()).toBe(403);
+  const invalid=await page.request.post('/api/videos',{headers:{Origin:'http://localhost:3000','Idempotency-Key':randomUUID()},data:{channelId:data.channels[0].id,topic:'Bad duration',targetDuration:999}});expect(invalid.status()).toBe(422);
+  const approval=await page.request.post('/api/videos/'+video.id+'/approve',{headers:{Origin:'http://localhost:3000'},data:{reviewed:true,rightsConfirmed:true}});expect(approval.status()).toBe(409);
+  const cancel=await page.request.post('/api/videos/'+video.id+'/cancel',{headers:{Origin:'http://localhost:3000'}});expect(cancel.ok()).toBeTruthy();
+  await page.getByRole('button',{name:'Tổng quan',exact:true}).click();await page.screenshot({path:'artifacts/ui-dashboard.png',fullPage:true});await page.getByRole('button',{name:'Đổi giao diện',exact:true}).click();await page.screenshot({path:'artifacts/ui-light.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});await page.screenshot({path:'artifacts/ui-mobile.png',fullPage:true});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.getByRole('button',{name:'Mở menu',exact:true}).click();await page.getByRole('button',{name:'Cài đặt tài khoản',exact:true}).first().click();await expect(page.getByRole('heading',{name:'Cài đặt tài khoản'})).toBeVisible();
+  expect(consoleErrors).toEqual([]);
+});

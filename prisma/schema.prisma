@@ -1,0 +1,686 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+enum Role {
+  OWNER
+  EDITOR
+  REVIEWER
+  VIEWER
+}
+enum VideoStatus {
+  DRAFT
+  SCHEDULED
+  RESEARCHING
+  RESEARCH_COMPLETED
+  SCRIPT_GENERATING
+  SCRIPT_READY
+  ASSET_GENERATING
+  AUDIO_GENERATING
+  RENDERING
+  RENDERED
+  QA_RUNNING
+  QA_FAILED
+  AWAITING_APPROVAL
+  APPROVED
+  READY_TO_PUBLISH
+  UPLOADING
+  PLATFORM_PROCESSING
+  PLATFORM_SCHEDULED
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+model User {
+  id String @id @default(cuid())
+  email String @unique
+  name String
+  passwordHash String
+  totpSecret String?
+  totpPending String?
+  totpPendingUntil DateTime?
+  totpCounter Int @default(0)
+  recoveryHashes String[] @default([])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  memberships WorkspaceMember[]
+  sessions Session[]
+  challenges AuthChallenge[]
+}
+model Session {
+  id String @id @default(cuid())
+  tokenHash String @unique
+  userId String
+  workspaceId String
+  expiresAt DateTime
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([expiresAt])
+}
+model Workspace {
+  id String @id @default(cuid())
+  name String
+  timezone String @default("Asia/Ho_Chi_Minh")
+  archivedAt DateTime?
+  retentionDays Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  members WorkspaceMember[]
+  sessions Session[]
+  channels ContentChannel[]
+  providers AIProvider[]
+  videos VideoProject[]
+  schedules ScheduleRule[]
+  templates VideoTemplate[]
+  notifications Notification[]
+  auditLogs AuditLog[]
+  socialAccounts SocialAccount[]
+  oauthApps WorkspaceOAuthApp[]
+  webhookEvents WebhookEvent[]
+  topics ContentTopic[]
+  ideas ContentIdea[]
+  voices VoiceProfile[]
+  brands BrandKit[]
+  invitations WorkspaceInvitation[]
+  media MediaItem[]
+  campaigns Campaign[]
+  experiments Experiment[]
+  tasks AutomationTask[]
+}
+model WorkspaceInvitation {
+  id String @id @default(cuid())
+  workspaceId String
+  email String
+  role Role
+  tokenHash String @unique
+  createdBy String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  acceptedAt DateTime?
+  acceptedBy String?
+  revokedAt DateTime?
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([workspaceId, email])
+}
+model WorkspaceMember {
+  id String @id @default(cuid())
+  workspaceId String
+  userId String
+  role Role @default(EDITOR)
+  createdAt DateTime @default(now())
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([workspaceId, userId])
+}
+model ContentChannel {
+  id String @id @default(cuid())
+  workspaceId String
+  name String
+  description String @default("")
+  topic String
+  audience String @default("Người xem 18–35 tuổi")
+  language String @default("vi")
+  tone String @default("Giáo dục, dễ hiểu")
+  mode String @default("MANUAL")
+  budgetCents Int @default(2000)
+  dedupeDays Int @default(30)
+  voice String @default("alloy")
+  template String @default("modern-tech")
+  settings Json @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  videos VideoProject[]
+  schedules ScheduleRule[]
+  @@unique([id, workspaceId])
+  @@index([workspaceId, deletedAt])
+}
+model AIProvider {
+  id String @id @default(cuid())
+  workspaceId String
+  name String
+  kind String @default("OPENAI")
+  baseUrl String @default("https://api.openai.com/v1")
+  encryptedKey String
+  llmModel String @default("gpt-4.1-mini")
+  imageModel String @default("gpt-image-2.5-flare")
+  ttsModel String @default("gpt-4o-mini-tts")
+  timeoutMs Int @default(120000)
+  concurrency Int @default(1)
+  priority Int @default(50)
+  requestsPerMinute Int @default(60)
+  settings Json @default("{}")
+  scriptCostCents Int @default(5)
+  imageCostCents Int @default(10)
+  ttsCostCents Int @default(3)
+  enabled Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  models AIModelConfig[]
+  @@index([workspaceId, enabled])
+}
+model AIModelConfig {
+  id String @id @default(cuid())
+  providerId String
+  capability String
+  model String
+  config Json
+  provider AIProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  @@unique([providerId, capability, model])
+}
+model VideoProject {
+  id String @id @default(cuid())
+  workspaceId String
+  channelId String
+  title String
+  topic String
+  topicHash String
+  status VideoStatus @default(DRAFT)
+  targetDuration Int @default(45)
+  aspectRatio String @default("9:16")
+  quality String @default("BALANCED")
+  intent String @default("VIDEO")
+  revision Int @default(0)
+  productionConfig Json?
+  researchBrief Json?
+  embedding Json?
+  campaignId String?
+  experimentId String?
+  variant String?
+  outputKey String?
+  srtKey String?
+  vttKey String?
+  thumbnailKey String?
+  qaScore Int?
+  qaReport Json?
+  lastError String?
+  scheduledAt DateTime?
+  productionAt DateTime?
+  deadlineAt DateTime?
+  researchStartedAt DateTime?
+  researchCompletedAt DateTime?
+  productionStartedAt DateTime?
+  completedAt DateTime?
+  deadlineMissedAt DateTime?
+  publishAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  channel ContentChannel @relation(fields: [channelId, workspaceId], references: [id, workspaceId])
+  script Script?
+  scenes VideoScene[]
+  assets GeneratedAsset[]
+  jobs ProductionJob[]
+  costs CostUsage[]
+  approvals ApprovalRequest[]
+  sources ResearchSource[]
+  publishingJobs PublishingJob[]
+  occurrence ScheduledOccurrence?
+  scriptEdits ScriptEditJob[]
+  @@unique([id, workspaceId])
+  @@index([workspaceId, status, createdAt])
+  @@index([channelId, topicHash, createdAt])
+}
+model Script {
+  id String @id @default(cuid())
+  projectId String @unique
+  workspaceId String
+  currentVersion Int @default(1)
+  data Json
+  approvedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  project VideoProject @relation(fields: [projectId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  versions ScriptVersion[]
+  @@unique([projectId, workspaceId])
+}
+model ScriptVersion {
+  id String @id @default(cuid())
+  scriptId String
+  version Int
+  data Json
+  authorId String?
+  reason String
+  createdAt DateTime @default(now())
+  script Script @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+  @@unique([scriptId, version])
+}
+model VideoScene {
+  id String @id @default(cuid())
+  projectId String
+  sceneOrder Int
+  narration String
+  visualPrompt String
+  duration Float
+  locked Boolean @default(false)
+  project VideoProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  @@unique([projectId, sceneOrder])
+}
+model GeneratedAsset {
+  id String @id @default(cuid())
+  projectId String
+  workspaceId String
+  revision Int
+  sceneOrder Int
+  kind String
+  storageKey String
+  mimeType String
+  bytes Int
+  duration Float?
+  metadata Json?
+  license String @default("Provider terms; user review required")
+  createdAt DateTime @default(now())
+  project VideoProject @relation(fields: [projectId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  audio AudioAsset?
+  @@unique([projectId, revision, sceneOrder, kind])
+  @@index([workspaceId, kind])
+}
+model AudioAsset {
+  id String @id @default(cuid())
+  assetId String @unique
+  voice String
+  duration Float
+  asset GeneratedAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+}
+model ProductionJob {
+  id String @id @default(cuid())
+  projectId String
+  workspaceId String
+  idempotencyKey String @unique
+  status String @default("QUEUED")
+  step String @default("SCRIPT")
+  availableAt DateTime?
+  attempts Int @default(0)
+  queueVersion Int @default(0)
+  workerId String?
+  leaseUntil DateTime?
+  error String?
+  result Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  project VideoProject @relation(fields: [projectId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  renders RenderJob[]
+  @@index([status, availableAt])
+  @@index([status, leaseUntil])
+  @@index([workspaceId, createdAt])
+}
+model ScriptEditJob {
+  id String @id @default(cuid())
+  projectId String
+  workspaceId String
+  actorId String
+  idempotencyKey String @unique
+  baseRevision Int
+  request Json
+  status String @default("QUEUED")
+  attempts Int @default(0)
+  queueVersion Int @default(0)
+  workerId String?
+  leaseUntil DateTime?
+  result Json?
+  error String?
+  appliedRevision Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  project VideoProject @relation(fields: [projectId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  @@index([workspaceId, createdAt])
+  @@index([status, leaseUntil])
+}
+model RenderJob {
+  id String @id @default(cuid())
+  productionJobId String
+  revision Int
+  status String
+  probe Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  productionJob ProductionJob @relation(fields: [productionJobId], references: [id], onDelete: Cascade)
+  @@unique([productionJobId, revision])
+}
+model ScheduleRule {
+  id String @id @default(cuid())
+  workspaceId String
+  channelId String
+  name String
+  topic String
+  campaignId String?
+  cron String?
+  timezone String @default("Asia/Ho_Chi_Minh")
+  nextRunAt DateTime?
+  endsAt DateTime?
+  publishDelayMinutes Int @default(270)
+  anchor String @default("RESEARCH")
+  productionDelayMinutes Int @default(0)
+  approvalBufferMinutes Int @default(5)
+  targetDuration Int @default(45)
+  maxRuns Int @default(30)
+  runCount Int @default(0)
+  enabled Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  channel ContentChannel @relation(fields: [channelId, workspaceId], references: [id, workspaceId])
+  occurrences ScheduledOccurrence[]
+  @@index([enabled, nextRunAt])
+}
+model ScheduledOccurrence {
+  id String @id @default(cuid())
+  scheduleId String
+  scheduledFor DateTime
+  projectId String @unique
+  createdAt DateTime @default(now())
+  schedule ScheduleRule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  project VideoProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  @@unique([scheduleId, scheduledFor])
+}
+model CostUsage {
+  id String @id @default(cuid())
+  projectId String
+  workspaceId String
+  idempotencyKey String @unique
+  category String
+  amountCents Int
+  status String @default("RESERVED")
+  isEstimate Boolean @default(true)
+  providerId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  project VideoProject @relation(fields: [projectId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  @@index([workspaceId, createdAt])
+}
+model ApprovalRequest {
+  id String @id @default(cuid())
+  projectId String
+  revision Int
+  type String @default("CONTENT")
+  status String @default("PENDING")
+  actorId String?
+  reason String?
+  createdAt DateTime @default(now())
+  decidedAt DateTime?
+  project VideoProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  @@unique([projectId, revision, type])
+}
+model VideoTemplate {
+  id String @id @default(cuid())
+  workspaceId String
+  slug String
+  name String
+  version Int @default(1)
+  config Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@unique([workspaceId, slug, version])
+}
+model WorkspaceOAuthApp {
+  id String @id @default(cuid())
+  workspaceId String
+  platform String
+  clientId String?
+  encryptedSecret String?
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@unique([workspaceId, platform])
+}
+model SocialAccount {
+  id String @id @default(cuid())
+  workspaceId String
+  platform String
+  remoteId String
+  displayName String
+  scopes String[]
+  oauthAppVersion Int?
+  disconnectedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  credential SocialAccountCredential?
+  publishingJobs PublishingJob[]
+  @@unique([workspaceId, platform, remoteId])
+}
+model SocialAccountCredential {
+  id String @id @default(cuid())
+  socialAccountId String @unique
+  encryptedAccessToken String
+  encryptedRefreshToken String?
+  expiresAt DateTime
+  updatedAt DateTime @updatedAt
+  socialAccount SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+}
+model OAuthState {
+  id String @id
+  workspaceId String
+  userId String
+  platform String
+  verifier String
+  oauthAppVersion Int?
+  expiresAt DateTime
+  @@index([expiresAt])
+}
+model PublishingJob {
+  id String @id @default(cuid())
+  projectId String
+  socialAccountId String
+  idempotencyKey String @unique
+  status String @default("AWAITING_APPROVAL")
+  revision Int
+  consentAt DateTime?
+  consentBy String?
+  consentHash String?
+  settings Json
+  remoteId String?
+  uploadSession String?
+  error String?
+  scheduledAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  project VideoProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  account SocialAccount @relation(fields: [socialAccountId], references: [id])
+  post PublishedPost?
+  @@index([status, scheduledAt])
+}
+model PublishedPost {
+  id String @id @default(cuid())
+  publishingJobId String @unique
+  remoteId String
+  url String
+  publishedAt DateTime
+  nextSyncAt DateTime @default(now())
+  syncLeaseUntil DateTime?
+  syncError String?
+  publishingJob PublishingJob @relation(fields: [publishingJobId], references: [id], onDelete: Cascade)
+  metrics PlatformMetricSnapshot[]
+}
+model PlatformMetricSnapshot {
+  id String @id @default(cuid())
+  postId String
+  views BigInt?
+  likes BigInt?
+  comments BigInt?
+  shares BigInt?
+  watchMinutes Float?
+  averageViewDuration Float?
+  periodKey String?
+  raw Json
+  capturedAt DateTime @default(now())
+  post PublishedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  @@index([postId, capturedAt])
+  @@unique([postId, periodKey])
+}
+model Notification {
+  id String @id @default(cuid())
+  workspaceId String
+  title String
+  message String
+  readAt DateTime?
+  createdAt DateTime @default(now())
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([workspaceId, createdAt])
+}
+model AuditLog {
+  id String @id @default(cuid())
+  workspaceId String
+  actorId String?
+  action String
+  entityId String?
+  details Json?
+  createdAt DateTime @default(now())
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([workspaceId, createdAt])
+}
+model ContentTopic {
+  id String @id @default(cuid())
+  workspaceId String
+  name String
+  keywords String[]
+  createdAt DateTime @default(now())
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@unique([workspaceId, name])
+}
+model ContentIdea {
+  id String @id @default(cuid())
+  workspaceId String
+  title String
+  angle String
+  hook String
+  channelId String?
+  problem String?
+  audience String?
+  channelFit Int?
+  feasibility Int?
+  feasibilityReason String?
+  estimatedCostCents Int?
+  estimateBasis String?
+  sourceUrls String[]
+  priority Int @default(50)
+  createdAt DateTime @default(now())
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([workspaceId, createdAt])
+}
+model ResearchSource {
+  id String @id @default(cuid())
+  projectId String
+  url String
+  title String
+  excerpt String
+  provenance String @default("USER_SUPPLIED")
+  accessedAt DateTime @default(now())
+  verified Boolean @default(false)
+  project VideoProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  @@unique([projectId, url])
+}
+model VoiceProfile {
+  id String @id @default(cuid())
+  workspaceId String
+  name String
+  provider String
+  voiceId String
+  language String
+  config Json
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@unique([workspaceId, provider, voiceId])
+}
+model BrandKit {
+  id String @id @default(cuid())
+  workspaceId String
+  name String
+  version Int @default(1)
+  config Json
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@unique([workspaceId, name, version])
+}
+
+model AuthChallenge {
+  id String @id @default(cuid())
+  userId String
+  tokenHash String @unique
+  kind String
+  expiresAt DateTime
+  usedAt DateTime?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([expiresAt])
+}
+model MediaItem {
+  id String @id @default(cuid())
+  workspaceId String
+  name String
+  kind String
+  storageKey String @unique
+  mimeType String
+  bytes Int
+  duration Float?
+  license String
+  checksum String
+  createdBy String
+  createdAt DateTime @default(now())
+  deletedAt DateTime?
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([workspaceId, kind])
+}
+model Campaign {
+  id String @id @default(cuid())
+  workspaceId String
+  channelId String
+  name String
+  topics String[]
+  startsAt DateTime
+  endsAt DateTime
+  budgetCents Int
+  maxVideos Int
+  status String @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([workspaceId, status])
+}
+model Experiment {
+  id String @id @default(cuid())
+  workspaceId String
+  channelId String
+  name String
+  variants Json
+  minimumSamples Int @default(10)
+  metric String @default("views")
+  status String @default("ACTIVE")
+  createdAt DateTime @default(now())
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+model AutomationTask {
+  id String @id @default(cuid())
+  workspaceId String
+  projectId String?
+  kind String
+  key String @unique
+  status String @default("QUEUED")
+  request Json
+  result Json?
+  remoteId String?
+  error String?
+  workerId String?
+  leaseUntil DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([status, leaseUntil])
+}
+model WebhookEvent {
+  id String @id @default(cuid())
+  platform String
+  workspaceId String?
+  oauthAppVersion Int?
+  hash String @unique
+  payload Json
+  processedAt DateTime?
+  createdAt DateTime @default(now())
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([workspaceId, processedAt])
+}
