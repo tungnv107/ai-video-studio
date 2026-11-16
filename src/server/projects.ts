@@ -67,12 +67,12 @@ export async function saveScriptInTransaction(tx:Prisma.TransactionClient,actor:
 export async function queueProject(actor:Actor,id:string,action:'render'|'retry',allowAdditionalCost=false){
   return db.$transaction(async tx=>{
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${id}))`;
-    const project=await tx.videoProject.findFirst({where:{id,workspaceId:actor.workspaceId},include:{script:true}});
+    const project=await tx.videoProject.findFirst({where:{id,workspaceId:actor.workspaceId},include:{script:true,assets:{select:{revision:true,sceneOrder:true,kind:true}}}});
     invariant(project,'NOT_FOUND','Không tìm thấy video.',404);
     invariant(editableStatuses.includes(project.status),'STATE','Trạng thái hiện tại không cho phép chạy lại.',409);
     invariant(!await tx.productionJob.findFirst({where:{projectId:id,status:{in:['QUEUED','RUNNING']}}}),'BUSY','Video đã có công việc đang chạy.',409);
     if(action==='render') invariant(project.script,'NO_SCRIPT','Cần có kịch bản trước khi dựng.');
-    const checkpoint={projectId:id,hasScript:!!project.script && scriptSchema.safeParse(project.script.data).success};
+    const checkpoint={projectId:id,hasScript:!!project.script && scriptSchema.safeParse(project.script.data).success,revision:project.revision,assets:project.assets};
     const costs=await tx.costUsage.findMany({where:{projectId:id,status:{in:['UNKNOWN','RESERVED','COMPLETED']}}});
     if(costs.some(cost=>needsCostConfirmation(cost,checkpoint)) && !allowAdditionalCost) throw new AppError('COST_CONFIRMATION','Bước cần chạy lại có lời gọi AI chưa rõ kết quả. Cần đồng ý chi phí bổ sung trước khi tiếp tục.',409);
     if(allowAdditionalCost){

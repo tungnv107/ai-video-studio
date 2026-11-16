@@ -2,6 +2,13 @@ import {describe,it,expect} from 'vitest';
 import {needsCostConfirmation,isPendingCostStep} from '../../src/domain/retry-costs';
 const checkpoint={projectId:'p',hasScript:true};
 describe('retry cost classification',()=>{
+  it('keeps historical revision charges and saved media out of additional-cost consent',()=>{
+    const mediaCheckpoint={...checkpoint,revision:2,assets:[{revision:2,sceneOrder:1,kind:'AUDIO'}]},cost={idempotencyKey:'p:r2:s1:audio:provider',category:'TTS',status:'UNKNOWN'};
+    expect(needsCostConfirmation(cost,mediaCheckpoint)).toBe(false);
+    expect(needsCostConfirmation({...cost,idempotencyKey:'p:r1:s2:audio:provider'},mediaCheckpoint)).toBe(false);
+    expect(needsCostConfirmation({...cost,idempotencyKey:'p:r2:s2:audio:provider'},mediaCheckpoint)).toBe(true);
+    expect(needsCostConfirmation({...cost,idempotencyKey:'other:r1:s1:audio:provider'},mediaCheckpoint)).toBe(true);
+  });
   it('skips only this project script generation when there is a saved script',()=>{
     const cost={idempotencyKey:'p:script:provider',category:'LLM',status:'UNKNOWN'};
     expect(needsCostConfirmation(cost,checkpoint)).toBe(false);

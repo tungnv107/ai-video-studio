@@ -31,6 +31,13 @@ async function fixture(saved=true){
 }
 
 describe('checkpoint-aware cost confirmation',()=>{
+  it('uses a saved audio checkpoint even if the cost receipt update was interrupted',async()=>{
+    const {project}=await fixture(),key=project.id+':r1:s1:audio:'+providerId;
+    await db.generatedAsset.create({data:{projectId:project.id,workspaceId:actor.workspaceId,revision:1,sceneOrder:1,kind:'AUDIO',storageKey:'test/'+randomUUID()+'.mp3',mimeType:'audio/mpeg',bytes:123,duration:5}});
+    await db.costUsage.create({data:{projectId:project.id,workspaceId:actor.workspaceId,providerId,category:'TTS',status:'UNKNOWN',amountCents:3,idempotencyKey:key}});
+    expect(await queueProject(actor,project.id,'render')).toMatchObject({status:'SCHEDULED'});
+    expect(await db.costUsage.findUnique({where:{idempotencyKey:key}})).toMatchObject({status:'UNKNOWN',amountCents:3});
+  });
   it('renders a saved script without repeating its LLM call or erasing uncertain charges',async()=>{
     const {project,current,historical}=await fixture();
     const script=vi.spyOn(OpenAIAdapter.prototype,'script');

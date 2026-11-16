@@ -1,4 +1,6 @@
 import {estimateProject} from '../server/estimates';
+import {productionPreflight} from '../server/production-preflight';
+import {speechVoice} from '../domain/speech-voice';
 import {SearchAdapter} from '../providers/search';
 import {z} from 'zod';
 import {plainText} from '../server/research';
@@ -79,6 +81,7 @@ export async function runProduction(jobId:string){
       const released=await db.productionJob.updateMany({where:{id:jobId,workerId:token,status:'RUNNING',leaseUntil:{gt:new Date()}},data:{status:'QUEUED',availableAt:project.productionAt,workerId:null,leaseUntil:null,queueVersion:{increment:1},attempts:{decrement:1}}});
       invariant(released.count,'LEASE_LOST','Công việc đã mất lease.',409);return;
     }
+    await productionPreflight(project);
     if(!project.productionStartedAt)await db.videoProject.update({where:{id:project.id},data:{productionStartedAt:new Date()}});
     let tone=project.channel.tone;if(project.experimentId&&project.variant){const experiment=await db.experiment.findFirst({where:{id:project.experimentId,workspaceId:project.workspaceId}});const variant=(experiment?.variants as {label:string;instruction:string}[]|undefined)?.find(v=>v.label===project.variant);if(variant)tone+='; Hướng thử nghiệm: '+variant.instruction;}
     let script:ScriptData,revision=project.revision;
@@ -135,13 +138,13 @@ export async function runProduction(jobId:string){
       if(image)await writeFile(imageFile,await readAsset(image.storageKey));else if(rendering.visualMode==='GRAPHICS')await writeFile(imageFile,await titleCard(scene.on_screen_text||scene.visual_description.slice(0,100),1080,project.aspectRatio==='9:16'?1920:project.aspectRatio==='16:9'?608:1080,rendering));
       if(!audio){
         await stage('AUDIO_GENERATING');
-        audio=await billed(`r${revision}:s${scene.scene_order}:audio`,'TTS',settings.ttsCostCents,async(adapter)=>{
+        audio=await billed(`r${revision}:s${scene.scene_order}:audio`,'TTS',settings.ttsCostCents,async(adapter,provider)=>{
           const bytes=await adapter.speech(scene.narration_text,project.channel.voice,rendering.voiceSpeed,rendering.voiceInstructions);await writeFile(audioFile,bytes);
           const info=await probe(audioFile),duration=Number(info.format.duration);
           invariant(info.streams.some(x=>x.codec_type==='audio')&&duration>0,'TTS_AUDIO','TTS trả file âm thanh không hợp lệ.');
           await assertLease();const key=`${project.workspaceId}/${project.id}/r${revision}/scene-${scene.scene_order}.mp3`;
           await putAsset(key,bytes,'audio/mpeg');
-          return db.generatedAsset.create({data:{...assetWhere,workspaceId:project.workspaceId,kind:'AUDIO',storageKey:key,mimeType:'audio/mpeg',bytes:bytes.length,duration,audio:{create:{voice:project.channel.voice,duration}}}});
+          return db.generatedAsset.create({data:{...assetWhere,workspaceId:project.workspaceId,kind:'AUDIO',storageKey:key,mimeType:'audio/mpeg',bytes:bytes.length,duration,audio:{create:{voice:speechVoice(provider.ttsModel,project.channel.voice),duration}}}});
         });
       }else await writeFile(audioFile,await readAsset(audio.storageKey));
       let videoFile:string|undefined;
