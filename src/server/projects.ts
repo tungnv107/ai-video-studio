@@ -6,6 +6,7 @@ import { db } from './db';
 import { videoInputSchema,scriptSchema,sameScene } from '../domain/schemas';
 import { AppError,invariant } from '../domain/errors';
 import { editableStatuses,topicHash } from '../domain/workflow';
+import {isPendingCostStep,needsCostConfirmation} from '../domain/retry-costs';
 import type { Actor } from './auth';
 export async function createProject(actor:Actor,input:unknown,idempotencyKey:string){
   const data=videoInputSchema.parse(input);
@@ -71,13 +72,13 @@ export async function queueProject(actor:Actor,id:string,action:'render'|'retry'
     invariant(editableStatuses.includes(project.status),'STATE','Trạng thái hiện tại không cho phép chạy lại.',409);
     invariant(!await tx.productionJob.findFirst({where:{projectId:id,status:{in:['QUEUED','RUNNING']}}}),'BUSY','Video đã có công việc đang chạy.',409);
     if(action==='render') invariant(project.script,'NO_SCRIPT','Cần có kịch bản trước khi dựng.');
-    const uncertain=await tx.costUsage.count({where:{projectId:id,status:{in:['UNKNOWN','RESERVED']}}});
-    if(uncertain && !allowAdditionalCost) throw new AppError('COST_CONFIRMATION','Có lời gọi AI chưa rõ kết quả. Cần đồng ý chi phí bổ sung trước khi thử lại.',409);
+    const checkpoint={projectId:id,hasScript:!!project.script && scriptSchema.safeParse(project.script.data).success};
+    const costs=await tx.costUsage.findMany({where:{projectId:id,status:{in:['UNKNOWN','RESERVED','COMPLETED']}}});
+    if(costs.some(cost=>needsCostConfirmation(cost,checkpoint)) && !allowAdditionalCost) throw new AppError('COST_CONFIRMATION','Bước cần chạy lại có lời gọi AI chưa rõ kết quả. Cần đồng ý chi phí bổ sung trước khi tiếp tục.',409);
     if(allowAdditionalCost){
       await tx.automationTask.updateMany({where:{projectId:id,kind:"VIDEO",status:"FAILED"},data:{remoteId:null,status:"QUEUED",error:null}});
       // Keep the old estimate charged; freeing the idempotency slot does not erase its cost.
-      const costs=await tx.costUsage.findMany({where:{projectId:id,status:{in:['UNKNOWN','RESERVED','COMPLETED']}}});
-      for(const c of costs) await tx.costUsage.update({where:{id:c.id},data:{idempotencyKey:c.idempotencyKey+':reviewed:'+randomUUID(),status:c.status==='RESERVED'?'UNKNOWN':c.status}});
+      for(const c of costs.filter(cost=>isPendingCostStep(cost,checkpoint))) await tx.costUsage.update({where:{id:c.id},data:{idempotencyKey:c.idempotencyKey+':reviewed:'+randomUUID(),status:c.status==='RESERVED'?'UNKNOWN':c.status}});
     }
     await tx.productionJob.create({data:{projectId:id,workspaceId:actor.workspaceId,idempotencyKey:actor.workspaceId+':retry:'+randomUUID()}});
     await tx.auditLog.create({data:{workspaceId:actor.workspaceId,actorId:actor.userId,action:allowAdditionalCost?'video.retry_with_cost_consent':'video.'+action,entityId:id}});
