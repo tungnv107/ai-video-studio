@@ -2,11 +2,13 @@
 
 Compose có web, worker, migration, PostgreSQL, Redis và MinIO tùy chọn; dùng persistent volumes, restart policy, log rotation và worker resource limits. Redis AOF/noeviction, PostgreSQL data volume. Cấu hình production bỏ host ports của PostgreSQL/Redis và nối riêng web vào mạng của Nginx Proxy Manager.
 
-## Oracle VPS / autolikebot.io.vn
+## Oracle VPS / studio.tungnv.com
+
+Domain đang dùng là `https://studio.tungnv.com`. `APP_URL` phải trùng chính xác origin trình duyệt (scheme, hostname và port). Khi đổi domain, cập nhật `.env` rồi chạy `docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --no-deps --force-recreate web worker` để đăng ký, đăng nhập và OAuth dùng đúng origin; chỉ restart container sẽ không nạp lại biến môi trường.
 
 - Repository: https://github.com/tungnv107/ai-video-studio (nhánh `main`).
 - Server: `ubuntu@161.118.222.102`, thư mục `/home/ubuntu/ai-video-studio`.
-- `.env` riêng trên server: `APP_URL=https://autolikebot.io.vn`, `WEB_PORT=3005`, `NPM_NETWORK=npm_proxy`. Tạo secrets ngẫu nhiên riêng, không copy dữ liệu/credentials kiểm thử local. Giữ `.env` quyền `600` và backup encryption key cùng database/media.
+- `.env` riêng trên server: `APP_URL=https://studio.tungnv.com`, `WEB_PORT=3005`, `NPM_NETWORK=npm_proxy`. Tạo secrets ngẫu nhiên riêng, không copy dữ liệu/credentials kiểm thử local. Giữ `.env` quyền `600` và backup encryption key cùng database/media.
 - Dùng cả hai file Compose trong mọi lệnh production. Build image một lần qua service web; migrate/web/worker dùng cùng image.
 
 ```sh
@@ -22,11 +24,11 @@ Lần cập nhật có migration: backup trước, build trước, dừng web/wo
 
 ### Nginx Proxy Manager
 
-Tạo DNS A record `autolikebot.io.vn` → `161.118.222.102`, rồi thêm Proxy Host:
+Tạo DNS A record `studio.tungnv.com` → `161.118.222.102`, rồi thêm Proxy Host:
 
 | Trường | Giá trị |
 | --- | --- |
-| Domain Names | `autolikebot.io.vn` |
+| Domain Names | `studio.tungnv.com` |
 | Scheme | `http` |
 | Forward Hostname / IP | `ai-video-studio-web` |
 | Forward Port | `3000` |
